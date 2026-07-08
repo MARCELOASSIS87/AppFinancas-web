@@ -1,0 +1,9 @@
+node_modules
+.expo
+src
+assets
+*.md
+package*.json
+app.json
+tsconfig.json
+babel.config.js
