@@ -5,6 +5,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PaperProvider } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useFonts } from 'expo-font';
 
 import { theme } from './src/theme/theme';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
@@ -92,6 +93,25 @@ function Navegador() {
 }
 
 export default function App() {
+  // No navegador as fontes de ícones (setas, chevrons) não são embutidas:
+  // precisam ser carregadas antes de renderizar, senão os glifos não aparecem.
+  const [fontsLoaded] = useFonts(MaterialCommunityIcons.font);
+
+  if (!fontsLoaded) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: theme.colors.background,
+        }}
+      >
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+      </View>
+    );
+  }
+
   return (
     <SafeAreaProvider>
       <PaperProvider
