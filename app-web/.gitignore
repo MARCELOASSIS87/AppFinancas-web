@@ -1,7 +1,8 @@
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
-# dependencies
-node_modules/
+# dependencies (só o node_modules da raiz do projeto; NÃO os fonts
+# vendorizados dentro de dist/assets/node_modules, que precisam ir pro deploy)
+/node_modules/
 
 # Expo
 .expo/
@@ -34,8 +35,8 @@ yarn-error.*
 *.env
 .env
 
-# build output
-build/
+# build output (raiz do projeto; NÃO o /vendor/build dos fonts em dist/)
+/build/
 
 # typescript
 *.tsbuildinfo

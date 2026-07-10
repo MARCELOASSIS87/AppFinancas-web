@@ -95,9 +95,11 @@ function Navegador() {
 export default function App() {
   // No navegador as fontes de ícones (setas, chevrons) não são embutidas:
   // precisam ser carregadas antes de renderizar, senão os glifos não aparecem.
-  const [fontsLoaded] = useFonts(MaterialCommunityIcons.font);
+  // Se a fonte falhar (ex.: 404), seguimos mesmo assim — melhor o app sem
+  // alguns ícones do que travado num spinner eterno.
+  const [fontsLoaded, fontError] = useFonts(MaterialCommunityIcons.font);
 
-  if (!fontsLoaded) {
+  if (!fontsLoaded && !fontError) {
     return (
       <View
         style={{

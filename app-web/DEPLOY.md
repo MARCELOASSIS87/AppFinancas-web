@@ -23,7 +23,7 @@ Depois commita tudo (incluindo o `dist/` atualizado) e sobe pro Git:
 
 ```powershell
 git add .
-git commit -m "fix: add dist, Dockerfile, docker-compose, nginx"
+git commit -m "fix: doc de deploy e ist novo"
 git push
 ```
 
@@ -40,8 +40,15 @@ git push
 ```bash
 cd /opt/AppFinancas/AppFinancas-web
 git pull
+cd app-web                      # o docker-compose.yml fica AQUI, não na raiz do repo
 docker compose up -d --build
 ```
+
+> ⚠️ **Atenção ao diretório:** o `git pull` roda na raiz do repositório
+> (`AppFinancas-web`), mas o `docker-compose.yml` / `Dockerfile` / `nginx.conf`
+> ficam dentro de **`app-web/`**. Se você rodar `docker compose up` na raiz, ele
+> não acha o compose ("no configuration file provided"), nenhum container sobe, e
+> o Traefik passa a responder **404** no domínio. Sempre entre em `app-web/` antes.
 
 O `--build` reconstrói a imagem nginx copiando o `dist/` novo. O Traefik detecta o
 container pelos labels do `docker-compose.yml` e roteia o domínio com HTTPS
