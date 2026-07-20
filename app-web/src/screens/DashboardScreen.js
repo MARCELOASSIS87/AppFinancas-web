@@ -9,21 +9,47 @@ import {
   ActivityIndicator,
   useTheme,
   TouchableRipple,
+  TextInput,
+  Chip,
+  Button,
 } from 'react-native-paper';
+import { DatePickerInput, registerTranslation, pt } from 'react-native-paper-dates';
 import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
+registerTranslation('pt', pt);
+
 function formatBRL(valor) {
   return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+// DD/MM — usado no modo mês (ano é implícito).
 function formatData(dateStr) {
   const d = new Date(dateStr);
   const dia = String(d.getUTCDate()).padStart(2, '0');
   const mes = String(d.getUTCMonth() + 1).padStart(2, '0');
   return `${dia}/${mes}`;
+}
+
+// DD/MM/AA — usado nos resultados de busca (global, cruza anos).
+function formatDataAno(dateStr) {
+  const d = new Date(dateStr);
+  const dia = String(d.getUTCDate()).padStart(2, '0');
+  const mes = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const ano = String(d.getUTCFullYear()).slice(-2);
+  return `${dia}/${mes}/${ano}`;
+}
+
+// Aceita "50", "50,00", "1.234,56" → número. Retorna NaN se vazio/inválido.
+function parseValorBR(str) {
+  if (str == null || String(str).trim() === '') return NaN;
+  const limpo = String(str)
+    .replace(/[^\d.,]/g, '')
+    .replace(/\./g, '')
+    .replace(',', '.');
+  return parseFloat(limpo);
 }
 
 function InicialCategoria({ inicial, bgColor, textColor }) {
@@ -36,10 +62,44 @@ function InicialCategoria({ inicial, bgColor, textColor }) {
   );
 }
 
+function ChipFiltro({ label, selecionado, onPress, colors }) {
+  return (
+    <Chip
+      compact
+      selected={selecionado}
+      showSelectedCheck={false}
+      onPress={onPress}
+      style={[
+        estilos.chip,
+        { backgroundColor: selecionado ? colors.primaryContainer : colors.surfaceVariant },
+      ]}
+      textStyle={{
+        color: selecionado ? colors.onPrimaryContainer : colors.onSurfaceVariant,
+        fontSize: 12,
+      }}
+    >
+      {label}
+    </Chip>
+  );
+}
+
 export default function DashboardScreen({ navigation }) {
   const [transacoes, setTransacoes] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [mesAtual, setMesAtual] = useState(new Date());
+
+  // ─── ESTADO DOS FILTROS / BUSCA ───────────────────────────────────────────
+  const [busca, setBusca] = useState('');
+  const [catsSel, setCatsSel] = useState([]);        // ids de categoria
+  const [tiposSel, setTiposSel] = useState([]);      // 'receita' | 'despesa'
+  const [statusSel, setStatusSel] = useState([]);    // 'pago' | 'pendente' | 'vencida'
+  const [recorrSel, setRecorrSel] = useState([]);    // 'fixo' | 'variavel'
+  const [valorMin, setValorMin] = useState('');
+  const [valorMax, setValorMax] = useState('');
+  const [periodoDe, setPeriodoDe] = useState(null);
+  const [periodoAte, setPeriodoAte] = useState(null);
+  // ──────────────────────────────────────────────────────────────────────────
+
   const { user, logout } = useAuth();
   const { colors, custom } = useTheme();
   const insets = useSafeAreaInsets();
@@ -62,6 +122,104 @@ export default function DashboardScreen({ navigation }) {
     }
   }
 
+  const toggle = (arr, setArr, val) =>
+    setArr(arr.includes(val) ? arr.filter((x) => x !== val) : [...arr, val]);
+
+  function limparFiltros() {
+    setBusca('');
+    setCatsSel([]);
+    setTiposSel([]);
+    setStatusSel([]);
+    setRecorrSel([]);
+    setValorMin('');
+    setValorMax('');
+    setPeriodoDe(null);
+    setPeriodoAte(null);
+  }
+
+  const filtrosAtivos =
+    busca.trim() !== '' ||
+    catsSel.length > 0 ||
+    tiposSel.length > 0 ||
+    statusSel.length > 0 ||
+    recorrSel.length > 0 ||
+    valorMin.trim() !== '' ||
+    valorMax.trim() !== '' ||
+    !!periodoDe ||
+    !!periodoAte;
+
+  // Categorias que aparecem nas transações (para os chips), ordenadas por nome.
+  const categoriasDisponiveis = (() => {
+    const mapa = new Map();
+    transacoes.forEach((t) => {
+      if (t.category?.id != null) mapa.set(t.category.id, t.category);
+    });
+    return [...mapa.values()].sort((a, b) =>
+      (a.name || '').localeCompare(b.name || '')
+    );
+  })();
+
+  // ─── APLICA TODOS OS FILTROS A UMA TRANSAÇÃO ──────────────────────────────
+  function passaFiltros(t) {
+    const q = busca.trim().toLowerCase();
+    if (q) {
+      const desc = (t.description || '').toLowerCase();
+      const cat = (t.category?.name || '').toLowerCase();
+      if (!desc.includes(q) && !cat.includes(q)) return false;
+    }
+
+    if (catsSel.length && !catsSel.includes(t.category?.id)) return false;
+
+    if (tiposSel.length && !tiposSel.includes(t.category?.type)) return false;
+
+    if (statusSel.length) {
+      const hoje = new Date();
+      hoje.setHours(0, 0, 0, 0);
+      const dt = new Date(t.date);
+      dt.setHours(0, 0, 0, 0);
+      const vencida = t.status === 'pendente' && dt < hoje;
+      const bate = statusSel.some((s) => (s === 'vencida' ? vencida : s === t.status));
+      if (!bate) return false;
+    }
+
+    if (recorrSel.length) {
+      const rec = t.recorrente === 'fixo' ? 'fixo' : 'variavel';
+      if (!recorrSel.includes(rec)) return false;
+    }
+
+    const v = parseFloat(t.amount) || 0;
+    const min = parseValorBR(valorMin);
+    const max = parseValorBR(valorMax);
+    if (!isNaN(min) && v < min) return false;
+    if (!isNaN(max) && v > max) return false;
+
+    if (periodoDe) {
+      const de = new Date(periodoDe);
+      de.setHours(0, 0, 0, 0);
+      if (new Date(t.date) < de) return false;
+    }
+    if (periodoAte) {
+      const ate = new Date(periodoAte);
+      ate.setHours(23, 59, 59, 999);
+      if (new Date(t.date) > ate) return false;
+    }
+
+    return true;
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
+  // Resultados globais (todo o histórico) quando há filtro ativo.
+  const resultados = filtrosAtivos ? transacoes.filter(passaFiltros) : [];
+  const resultadosSorted = [...resultados].sort(
+    (a, b) => new Date(b.date) - new Date(a.date)
+  );
+  const totalReceitasResult = resultados
+    .filter((t) => t.category?.type === 'receita')
+    .reduce((acc, t) => acc + (parseFloat(t.amount) || 0), 0);
+  const totalDespesasResult = resultados
+    .filter((t) => t.category?.type === 'despesa')
+    .reduce((acc, t) => acc + (parseFloat(t.amount) || 0), 0);
+
   // ─── NAVEGAÇÃO POR MÊS ────────────────────────────────────────────────────
   function mesAnterior() {
     setMesAtual((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1));
@@ -71,17 +229,21 @@ export default function DashboardScreen({ navigation }) {
   }
 
   const agora = new Date();
-  // É o mês corrente? (não navega pro futuro além dele)
   const ehMesAtual =
     mesAtual.getFullYear() === agora.getFullYear() &&
     mesAtual.getMonth() === agora.getMonth();
 
-  // Rótulo "Junho 2026"
+  // Mês posterior ao corrente → mostra PREVISÃO (recorrências pendentes).
+  const ehFuturo =
+    mesAtual.getFullYear() > agora.getFullYear() ||
+    (mesAtual.getFullYear() === agora.getFullYear() &&
+      mesAtual.getMonth() > agora.getMonth());
+
   const nomeMes = mesAtual.toLocaleString('pt-BR', { month: 'long' });
   const labelMes = `${nomeMes.charAt(0).toUpperCase()}${nomeMes.slice(1)} ${mesAtual.getFullYear()}`;
   // ──────────────────────────────────────────────────────────────────────────
 
-  // ─── FILTROS POR MÊS ──────────────────────────────────────────────────────
+  // ─── FILTROS POR MÊS (modo normal, sem busca) ─────────────────────────────
   const primeiroDia = new Date(mesAtual.getFullYear(), mesAtual.getMonth(), 1);
   const ultimoDia = new Date(mesAtual.getFullYear(), mesAtual.getMonth() + 1, 0, 23, 59, 59);
 
@@ -90,11 +252,8 @@ export default function DashboardScreen({ navigation }) {
     return d >= primeiroDia && d <= ultimoDia;
   });
 
-  // PAGAS — sempre só do mês visualizado
   const pagasDoMes = transacoesDoMes.filter((t) => t.status === 'pago');
 
-  // PENDENTES — no mês atual inclui as vencidas de meses anteriores;
-  // no histórico mostra só as pendentes daquele mês.
   const pendentesDoMes = transacoesDoMes.filter((t) => t.status === 'pendente');
   const pendentesVencidasAnteriores = transacoes.filter(
     (t) => t.status === 'pendente' && new Date(t.date) < primeiroDia
@@ -104,8 +263,6 @@ export default function DashboardScreen({ navigation }) {
     : pendentesDoMes;
   // ──────────────────────────────────────────────────────────────────────────
 
-  // SALDO — acumulado real: todas as pagas até hoje (não muda ao navegar;
-  // ignora pagas com data futura).
   const todasPagas = transacoes.filter(
     (t) => t.status === 'pago' && new Date(t.date) <= agora
   );
@@ -114,7 +271,6 @@ export default function DashboardScreen({ navigation }) {
     return acc + (t.category?.type === 'receita' ? v : -v);
   }, 0);
 
-  // A receber / A pagar — sobre os pendentes filtrados (inclui vencidas no mês atual).
   const aReceber = pendentes
     .filter((t) => t.category?.type === 'receita')
     .reduce((acc, t) => acc + (parseFloat(t.amount) || 0), 0);
@@ -123,12 +279,21 @@ export default function DashboardScreen({ navigation }) {
     .filter((t) => t.category?.type === 'despesa')
     .reduce((acc, t) => acc + (parseFloat(t.amount) || 0), 0);
 
-  // Receitas / Despesas pagas do mês visualizado (mini-cards de histórico).
   const receitasDoMes = pagasDoMes
     .filter((t) => t.category?.type === 'receita')
     .reduce((acc, t) => acc + (parseFloat(t.amount) || 0), 0);
 
   const despesasDoMes = pagasDoMes
+    .filter((t) => t.category?.type === 'despesa')
+    .reduce((acc, t) => acc + (parseFloat(t.amount) || 0), 0);
+
+  // Previsão do mês (futuro): tudo que está lançado naquele mês, pago ou
+  // pendente — na prática as recorrências geradas pra frente.
+  const previsaoReceitas = transacoesDoMes
+    .filter((t) => t.category?.type === 'receita')
+    .reduce((acc, t) => acc + (parseFloat(t.amount) || 0), 0);
+
+  const previsaoGastos = transacoesDoMes
     .filter((t) => t.category?.type === 'despesa')
     .reduce((acc, t) => acc + (parseFloat(t.amount) || 0), 0);
 
@@ -140,7 +305,7 @@ export default function DashboardScreen({ navigation }) {
   const saldoCor =
     saldoAtual > 0 ? custom.income : saldoAtual < 0 ? custom.expense : colors.onSurface;
 
-  function renderTransacao(item) {
+  function renderTransacao(item, comAno = false) {
     const isReceita = item.category?.type === 'receita';
     const valorCor = isReceita ? custom.income : custom.expense;
     const sinal = isReceita ? '+ ' : '- ';
@@ -182,7 +347,7 @@ export default function DashboardScreen({ navigation }) {
                 numberOfLines={1}
               >
                 <Text style={vencida ? { color: custom.expense, fontWeight: 'bold' } : undefined}>
-                  {formatData(item.date)}
+                  {comAno ? formatDataAno(item.date) : formatData(item.date)}
                 </Text>
                 {' · '}{item.category?.name || '—'} · {item.recorrente === 'fixo' ? 'Fixo' : 'Variável'}
               </Text>
@@ -210,26 +375,6 @@ export default function DashboardScreen({ navigation }) {
         />
       </View>
 
-      {/* ─── HEADER DE MÊS ─── */}
-      <View style={estilos.mesHeader}>
-        <IconButton
-          icon="chevron-left"
-          iconColor={colors.onSurface}
-          size={26}
-          onPress={mesAnterior}
-        />
-        <Text style={[estilos.mesTexto, { color: colors.onSurface }]}>
-          {labelMes}
-        </Text>
-        <IconButton
-          icon="chevron-right"
-          iconColor={ehMesAtual ? colors.onSurfaceDisabled : colors.onSurface}
-          size={26}
-          disabled={ehMesAtual}
-          onPress={proximoMes}
-        />
-      </View>
-
       {carregando ? (
         <View style={estilos.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -238,11 +383,119 @@ export default function DashboardScreen({ navigation }) {
         <ScrollView
           contentContainerStyle={{ ...estilos.scroll, paddingBottom: insets.bottom + 80 }}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          <Surface
-            style={[estilos.cardPrincipal, { backgroundColor: colors.surface }]}
-            elevation={0}
-          >
+          {/* ─── BUSCA + FILTROS ─── */}
+          <View style={estilos.filtroBloco}>
+            <TextInput
+              mode="outlined"
+              dense
+              placeholder="Buscar por descrição ou categoria"
+              value={busca}
+              onChangeText={setBusca}
+              left={<TextInput.Icon icon="magnify" />}
+              right={
+                busca ? <TextInput.Icon icon="close" onPress={() => setBusca('')} /> : null
+              }
+              style={estilos.buscaCampo}
+            />
+
+            {/* Tipo / Situação / Recorrência */}
+            <View style={estilos.chipsWrap}>
+              <ChipFiltro label="Receita" colors={colors} selecionado={tiposSel.includes('receita')} onPress={() => toggle(tiposSel, setTiposSel, 'receita')} />
+              <ChipFiltro label="Despesa" colors={colors} selecionado={tiposSel.includes('despesa')} onPress={() => toggle(tiposSel, setTiposSel, 'despesa')} />
+              <ChipFiltro label="Pago" colors={colors} selecionado={statusSel.includes('pago')} onPress={() => toggle(statusSel, setStatusSel, 'pago')} />
+              <ChipFiltro label="Pendente" colors={colors} selecionado={statusSel.includes('pendente')} onPress={() => toggle(statusSel, setStatusSel, 'pendente')} />
+              <ChipFiltro label="Vencida" colors={colors} selecionado={statusSel.includes('vencida')} onPress={() => toggle(statusSel, setStatusSel, 'vencida')} />
+              <ChipFiltro label="Fixo" colors={colors} selecionado={recorrSel.includes('fixo')} onPress={() => toggle(recorrSel, setRecorrSel, 'fixo')} />
+              <ChipFiltro label="Variável" colors={colors} selecionado={recorrSel.includes('variavel')} onPress={() => toggle(recorrSel, setRecorrSel, 'variavel')} />
+            </View>
+
+            {/* Categorias */}
+            {categoriasDisponiveis.length > 0 && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={estilos.catsRow}
+                keyboardShouldPersistTaps="handled"
+              >
+                {categoriasDisponiveis.map((cat) => (
+                  <ChipFiltro
+                    key={cat.id}
+                    label={cat.name}
+                    colors={colors}
+                    selecionado={catsSel.includes(cat.id)}
+                    onPress={() => toggle(catsSel, setCatsSel, cat.id)}
+                  />
+                ))}
+              </ScrollView>
+            )}
+
+            {/* Faixa de valor (exato = mesmo valor nos dois) */}
+            <View style={estilos.linhaDupla}>
+              <TextInput
+                mode="outlined"
+                dense
+                label="Valor mín"
+                keyboardType="decimal-pad"
+                value={valorMin}
+                onChangeText={setValorMin}
+                left={<TextInput.Affix text="R$" />}
+                style={estilos.campoMetade}
+              />
+              <TextInput
+                mode="outlined"
+                dense
+                label="Valor máx"
+                keyboardType="decimal-pad"
+                value={valorMax}
+                onChangeText={setValorMax}
+                left={<TextInput.Affix text="R$" />}
+                style={estilos.campoMetade}
+              />
+            </View>
+
+            {/* Período */}
+            <View style={estilos.linhaDupla}>
+              <View style={estilos.campoMetade}>
+                <DatePickerInput
+                  locale="pt"
+                  label="De"
+                  value={periodoDe || undefined}
+                  onChange={(d) => setPeriodoDe(d || null)}
+                  inputMode="start"
+                  mode="outlined"
+                  dense
+                />
+              </View>
+              <View style={estilos.campoMetade}>
+                <DatePickerInput
+                  locale="pt"
+                  label="Até"
+                  value={periodoAte || undefined}
+                  onChange={(d) => setPeriodoAte(d || null)}
+                  inputMode="start"
+                  mode="outlined"
+                  dense
+                />
+              </View>
+            </View>
+
+            {filtrosAtivos && (
+              <Button
+                mode="text"
+                icon="filter-remove-outline"
+                onPress={limparFiltros}
+                textColor={custom.expense}
+                style={estilos.limparBtn}
+              >
+                Limpar filtros
+              </Button>
+            )}
+          </View>
+
+          {/* ─── SALDO (sempre) ─── */}
+          <Surface style={[estilos.cardPrincipal, { backgroundColor: colors.surface }]} elevation={0}>
             <Text style={[estilos.cardLabel, { color: colors.onSurfaceVariant }]}>
               Saldo atual
             </Text>
@@ -251,86 +504,111 @@ export default function DashboardScreen({ navigation }) {
             </Text>
           </Surface>
 
-          {/* No mês atual: A receber / A pagar (pendentes).
-              No histórico: Receitas / Despesas pagas do mês visualizado. */}
-          <View style={estilos.miniCardsRow}>
-            <Surface
-              style={[estilos.miniCard, { backgroundColor: colors.surface }]}
-              elevation={0}
-            >
-              <Text style={[estilos.miniCardLabel, { color: colors.onSurfaceVariant }]}>
-                {ehMesAtual ? 'A receber' : 'Receitas'}
-              </Text>
-              <Text style={[estilos.miniCardValor, { color: custom.income }]}>
-                {formatBRL(ehMesAtual ? aReceber : receitasDoMes)}
-              </Text>
-            </Surface>
-            <Surface
-              style={[estilos.miniCard, { backgroundColor: colors.surface }]}
-              elevation={0}
-            >
-              <Text style={[estilos.miniCardLabel, { color: colors.onSurfaceVariant }]}>
-                {ehMesAtual ? 'A pagar' : 'Despesas'}
-              </Text>
-              <Text style={[estilos.miniCardValor, { color: custom.expense }]}>
-                {formatBRL(ehMesAtual ? aPagar : despesasDoMes)}
-              </Text>
-            </Surface>
-          </View>
-
-          {/* Card — Gastos por categoria */}
-          <TouchableRipple
-            onPress={() => navigation.navigate('Categories')}
-            rippleColor="rgba(255,255,255,0.08)"
-            style={[estilos.cardCategoriasWrapper, { backgroundColor: colors.surface }]}
-          >
-            <View style={estilos.cardCategoriasRow}>
-              <View style={estilos.cardCategoriasEsquerda}>
-                <MaterialCommunityIcons
-                  name="chart-donut"
-                  size={22}
-                  color={colors.primary}
-                  style={{ marginRight: 10 }}
-                />
-                <Text style={[estilos.cardCategoriasTexto, { color: colors.onSurface }]}>
-                  Gastos por categoria
-                </Text>
-              </View>
-              <MaterialCommunityIcons
-                name="chevron-right"
-                size={22}
-                color={colors.onSurfaceVariant}
-              />
-            </View>
-          </TouchableRipple>
-
-          {transacoes.length === 0 ? (
-            // Banco vazio: nenhuma transação cadastrada ainda.
-            <Text style={[estilos.vazioTexto, { color: colors.onSurfaceVariant }]}>
-              Nenhuma transação ainda.{'\n'}Toque no + para começar.
-            </Text>
-          ) : transacoesDoMes.length === 0 ? (
-            // Tem transações, mas nenhuma no mês visualizado.
-            <Text style={[estilos.mesVazio, { color: custom.textSecondary }]}>
-              Sem transações em {labelMes}
-            </Text>
-          ) : (
+          {filtrosAtivos ? (
+            /* ═══ MODO BUSCA: resultados de todo o histórico ═══ */
             <>
-              {pendentesSorted.length > 0 && (
-                <View style={estilos.secao}>
-                  <Text style={[estilos.secaoTitulo, { color: colors.onSurfaceVariant }]}>
-                    Pendentes
+              <Surface style={[estilos.resumo, { backgroundColor: colors.surface }]} elevation={0}>
+                <Text style={[estilos.resumoContagem, { color: colors.onSurface }]}>
+                  {resultados.length} {resultados.length === 1 ? 'resultado' : 'resultados'}
+                </Text>
+                <View style={estilos.resumoValores}>
+                  <Text style={[estilos.resumoValor, { color: custom.income }]}>
+                    + {formatBRL(totalReceitasResult)}
                   </Text>
-                  {pendentesSorted.map(renderTransacao)}
+                  <Text style={[estilos.resumoValor, { color: custom.expense }]}>
+                    - {formatBRL(totalDespesasResult)}
+                  </Text>
+                </View>
+              </Surface>
+
+              {resultados.length === 0 ? (
+                <Text style={[estilos.mesVazio, { color: custom.textSecondary }]}>
+                  Nenhuma transação encontrada com esses filtros.
+                </Text>
+              ) : (
+                <View style={estilos.secao}>
+                  {resultadosSorted.map((item) => renderTransacao(item, true))}
                 </View>
               )}
-              {pagasSorted.length > 0 && (
-                <View style={estilos.secao}>
-                  <Text style={[estilos.secaoTitulo, { color: colors.onSurfaceVariant }]}>
-                    Pagas
+            </>
+          ) : (
+            /* ═══ MODO NORMAL: dashboard mês a mês ═══ */
+            <>
+              {/* Header de mês */}
+              <View style={estilos.mesHeader}>
+                <IconButton icon="chevron-left" iconColor={colors.onSurface} size={26} onPress={mesAnterior} />
+                <Text style={[estilos.mesTexto, { color: colors.onSurface }]}>{labelMes}</Text>
+                <IconButton
+                  icon="chevron-right"
+                  iconColor={colors.onSurface}
+                  size={26}
+                  onPress={proximoMes}
+                />
+              </View>
+
+              <View style={estilos.miniCardsRow}>
+                <Surface style={[estilos.miniCard, { backgroundColor: colors.surface }]} elevation={0}>
+                  <Text style={[estilos.miniCardLabel, { color: colors.onSurfaceVariant }]}>
+                    {ehMesAtual ? 'A receber' : ehFuturo ? 'Previsão receitas' : 'Receitas'}
                   </Text>
-                  {pagasSorted.map(renderTransacao)}
+                  <Text style={[estilos.miniCardValor, { color: custom.income }]}>
+                    {formatBRL(ehMesAtual ? aReceber : ehFuturo ? previsaoReceitas : receitasDoMes)}
+                  </Text>
+                </Surface>
+                <Surface style={[estilos.miniCard, { backgroundColor: colors.surface }]} elevation={0}>
+                  <Text style={[estilos.miniCardLabel, { color: colors.onSurfaceVariant }]}>
+                    {ehMesAtual ? 'A pagar' : ehFuturo ? 'Previsão gastos' : 'Despesas'}
+                  </Text>
+                  <Text style={[estilos.miniCardValor, { color: custom.expense }]}>
+                    {formatBRL(ehMesAtual ? aPagar : ehFuturo ? previsaoGastos : despesasDoMes)}
+                  </Text>
+                </Surface>
+              </View>
+
+              {/* Card — Gastos por categoria */}
+              <TouchableRipple
+                onPress={() => navigation.navigate('Categories')}
+                rippleColor="rgba(255,255,255,0.08)"
+                style={[estilos.cardCategoriasWrapper, { backgroundColor: colors.surface }]}
+              >
+                <View style={estilos.cardCategoriasRow}>
+                  <View style={estilos.cardCategoriasEsquerda}>
+                    <MaterialCommunityIcons name="chart-donut" size={22} color={colors.primary} style={{ marginRight: 10 }} />
+                    <Text style={[estilos.cardCategoriasTexto, { color: colors.onSurface }]}>
+                      Gastos por categoria
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons name="chevron-right" size={22} color={colors.onSurfaceVariant} />
                 </View>
+              </TouchableRipple>
+
+              {transacoes.length === 0 ? (
+                <Text style={[estilos.vazioTexto, { color: colors.onSurfaceVariant }]}>
+                  Nenhuma transação ainda.{'\n'}Toque no + para começar.
+                </Text>
+              ) : transacoesDoMes.length === 0 ? (
+                <Text style={[estilos.mesVazio, { color: custom.textSecondary }]}>
+                  Sem transações em {labelMes}
+                </Text>
+              ) : (
+                <>
+                  {pendentesSorted.length > 0 && (
+                    <View style={estilos.secao}>
+                      <Text style={[estilos.secaoTitulo, { color: colors.onSurfaceVariant }]}>
+                        Pendentes
+                      </Text>
+                      {pendentesSorted.map((item) => renderTransacao(item))}
+                    </View>
+                  )}
+                  {pagasSorted.length > 0 && (
+                    <View style={estilos.secao}>
+                      <Text style={[estilos.secaoTitulo, { color: colors.onSurfaceVariant }]}>
+                        Pagas
+                      </Text>
+                      {pagasSorted.map((item) => renderTransacao(item))}
+                    </View>
+                  )}
+                </>
               )}
             </>
           )}
@@ -365,6 +643,41 @@ const estilos = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
   },
+  // ─── Filtros ───
+  filtroBloco: {
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  buscaCampo: {
+    marginBottom: 10,
+  },
+  chipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 8,
+  },
+  catsRow: {
+    gap: 6,
+    paddingRight: 8,
+    marginBottom: 10,
+  },
+  chip: {
+    marginBottom: 2,
+  },
+  linhaDupla: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 10,
+  },
+  campoMetade: {
+    flex: 1,
+  },
+  limparBtn: {
+    alignSelf: 'flex-start',
+    marginTop: -2,
+  },
+  // ─── Mês ───
   mesHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -409,6 +722,28 @@ const estilos = StyleSheet.create({
     fontSize: 32,
     fontWeight: 'bold',
     letterSpacing: 0.5,
+  },
+  // ─── Resumo dos resultados ───
+  resumo: {
+    marginHorizontal: 16,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  resumoContagem: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  resumoValores: {
+    alignItems: 'flex-end',
+  },
+  resumoValor: {
+    fontSize: 13,
+    fontWeight: 'bold',
   },
   miniCardsRow: {
     flexDirection: 'row',
