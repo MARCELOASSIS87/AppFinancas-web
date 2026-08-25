@@ -15,6 +15,7 @@ import DashboardScreen from './src/screens/DashboardScreen';
 import AddTransactionScreen from './src/screens/AddTransactionScreen';
 import EditTransactionScreen from './src/screens/EditTransactionScreen';
 import CategoriesScreen from './src/screens/CategoriesScreen';
+import RidesScreen from './src/screens/RidesScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -70,6 +71,11 @@ function Navegador() {
             <Stack.Screen
               name="Categories"
               component={CategoriesScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="Rides"
+              component={RidesScreen}
               options={{ headerShown: false }}
             />
           </>

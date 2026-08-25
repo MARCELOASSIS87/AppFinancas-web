@@ -582,6 +582,23 @@ export default function DashboardScreen({ navigation }) {
                 </View>
               </TouchableRipple>
 
+              {/* Card — Controle de transporte */}
+              <TouchableRipple
+                onPress={() => navigation.navigate('Rides')}
+                rippleColor="rgba(255,255,255,0.08)"
+                style={[estilos.cardCategoriasWrapper, { backgroundColor: colors.surface }]}
+              >
+                <View style={estilos.cardCategoriasRow}>
+                  <View style={estilos.cardCategoriasEsquerda}>
+                    <MaterialCommunityIcons name="bus-school" size={22} color={colors.primary} style={{ marginRight: 10 }} />
+                    <Text style={[estilos.cardCategoriasTexto, { color: colors.onSurface }]}>
+                      Controle de transporte
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons name="chevron-right" size={22} color={colors.onSurfaceVariant} />
+                </View>
+              </TouchableRipple>
+
               {transacoes.length === 0 ? (
                 <Text style={[estilos.vazioTexto, { color: colors.onSurfaceVariant }]}>
                   Nenhuma transação ainda.{'\n'}Toque no + para começar.
