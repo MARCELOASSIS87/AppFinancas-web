@@ -64,6 +64,54 @@ function valorDaCorrida(rides, dia, motorista, periodo) {
   );
 }
 
+const NOMES_DIA_COMPLETO = {
+  0: 'Domingo', 1: 'Segunda', 2: 'Terça', 3: 'Quarta', 4: 'Quinta', 5: 'Sexta', 6: 'Sábado',
+};
+
+function gerarTextoRelatorio(start, end, rides, resumo) {
+  const linhas = [];
+  linhas.push(`📋 Relatório de corridas — ${formatDateBR(start)} a ${formatDateBR(end)}`);
+
+  for (const motorista of MOTORISTAS) {
+    linhas.push('');
+    linhas.push(motorista.toUpperCase());
+
+    const corridasDoMotorista = rides
+      .filter((r) => r.driver === motorista)
+      .sort((a, b) => {
+        const cmp = (a.date || '').localeCompare(b.date || '');
+        if (cmp !== 0) return cmp;
+        return a.period === 'manha' ? -1 : 1;
+      });
+
+    if (corridasDoMotorista.length === 0) {
+      linhas.push('Nenhum registro na semana.');
+      continue;
+    }
+
+    for (const ride of corridasDoMotorista) {
+      const d = new Date(`${ride.date?.slice(0, 10)}T00:00:00`);
+      const nomeDia = NOMES_DIA_COMPLETO[d.getDay()];
+      const periodoLabel = PERIODOS.find((p) => p.valor === ride.period)?.label || ride.period;
+      const naoFoi = ride.type === 'nao_foi';
+      const valor = parseFloat(ride.amount) || VALORES[ride.period]?.[ride.type] || 0;
+
+      if (naoFoi) {
+        linhas.push(`${nomeDia} ${formatDateBR(d)} - ${periodoLabel} - Não foi`);
+      } else {
+        const tipoLabel = ride.type === 'especial' ? `Especial${ride.route ? ` (${ride.route})` : ''}` : 'Normal';
+        linhas.push(`${nomeDia} ${formatDateBR(d)} - ${periodoLabel} - ${tipoLabel} - ${formatBRL(valor)}`);
+      }
+    }
+
+    const total = resumo[motorista]?.total || 0;
+    const qtd = resumo[motorista]?.rides || 0;
+    linhas.push(`Total: ${formatBRL(total)} (${qtd} ${qtd === 1 ? 'corrida' : 'corridas'})`);
+  }
+
+  return linhas.join('\n');
+}
+
 export default function RidesScreen({ navigation }) {
   const [semanaRef, setSemanaRef] = useState(new Date());
   const [rides, setRides] = useState([]);
@@ -75,6 +123,8 @@ export default function RidesScreen({ navigation }) {
   const [tipoForm, setTipoForm] = useState('normal');
   const [trajetoForm, setTrajetoForm] = useState('');
   const [salvando, setSalvando] = useState(false);
+  const [relatorioVisivel, setRelatorioVisivel] = useState(false);
+  const [copiado, setCopiado] = useState(false);
 
   const { colors, custom } = useTheme();
   const insets = useSafeAreaInsets();
@@ -150,6 +200,17 @@ export default function RidesScreen({ navigation }) {
       showAlert('Erro', erro.response?.data?.message || 'Não foi possível salvar.');
     } finally {
       setSalvando(false);
+    }
+  }
+
+  async function handleCopiarRelatorio() {
+    const texto = gerarTextoRelatorio(start, end, rides, resumo);
+    try {
+      await navigator.clipboard.writeText(texto);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2000);
+    } catch {
+      showAlert('Erro', 'Não foi possível copiar. Selecione e copie o texto manualmente.');
     }
   }
 
@@ -240,7 +301,12 @@ export default function RidesScreen({ navigation }) {
         <Text style={[estilos.headerTitulo, { color: colors.onSurface }]}>
           Controle de transporte
         </Text>
-        <View style={{ width: 48 }} />
+        <IconButton
+          icon="text-box-outline"
+          iconColor={colors.onSurface}
+          size={22}
+          onPress={() => setRelatorioVisivel(true)}
+        />
       </View>
 
       {carregando ? (
@@ -397,6 +463,87 @@ export default function RidesScreen({ navigation }) {
           )}
         </Modal>
       </Portal>
+
+      {/* Modal de relatório */}
+      <Portal>
+        <Modal
+          visible={relatorioVisivel}
+          onDismiss={() => setRelatorioVisivel(false)}
+          contentContainerStyle={[estilos.modal, { backgroundColor: colors.surface }]}
+        >
+          <Text style={[estilos.modalTitulo, { color: colors.onSurface }]}>
+            Relatório — {formatDateBR(start)} a {formatDateBR(end)}
+          </Text>
+
+          <ScrollView style={estilos.relatorioLista} showsVerticalScrollIndicator={false}>
+            {MOTORISTAS.map((motorista) => {
+              const corridas = rides
+                .filter((r) => r.driver === motorista)
+                .sort((a, b) => {
+                  const cmp = (a.date || '').localeCompare(b.date || '');
+                  if (cmp !== 0) return cmp;
+                  return a.period === 'manha' ? -1 : 1;
+                });
+
+              return (
+                <View key={motorista} style={estilos.relatorioMotoristaBloco}>
+                  <Text style={[estilos.relatorioMotoristaNome, { color: colors.onSurface }]}>
+                    {motorista}
+                  </Text>
+
+                  {corridas.length === 0 ? (
+                    <Text style={[estilos.relatorioVazio, { color: colors.onSurfaceVariant }]}>
+                      Nenhum registro na semana.
+                    </Text>
+                  ) : (
+                    corridas.map((ride) => {
+                      const d = new Date(`${ride.date?.slice(0, 10)}T00:00:00`);
+                      const nomeDia = NOMES_DIA_COMPLETO[d.getDay()];
+                      const periodoLabel = PERIODOS.find((p) => p.valor === ride.period)?.label || ride.period;
+                      const naoFoi = ride.type === 'nao_foi';
+                      const valor = parseFloat(ride.amount) || VALORES[ride.period]?.[ride.type] || 0;
+
+                      return (
+                        <View key={ride.id} style={estilos.relatorioLinha}>
+                          <Text style={[estilos.relatorioLinhaTexto, { color: colors.onSurfaceVariant }]}>
+                            {nomeDia} {formatDateBR(d)} · {periodoLabel}
+                            {!naoFoi && ride.type === 'especial' && ride.route ? ` · ${ride.route}` : ''}
+                            {naoFoi ? ' · Não foi' : ''}
+                          </Text>
+                          {!naoFoi && (
+                            <Text style={[estilos.relatorioLinhaValor, { color: custom.income }]}>
+                              {formatBRL(valor)}
+                            </Text>
+                          )}
+                        </View>
+                      );
+                    })
+                  )}
+
+                  <View style={[estilos.relatorioTotalRow, { borderTopColor: colors.outline }]}>
+                    <Text style={[estilos.relatorioTotalLabel, { color: colors.onSurface }]}>Total</Text>
+                    <Text style={[estilos.relatorioTotalValor, { color: custom.income }]}>
+                      {formatBRL(resumo[motorista]?.total || 0)} · {resumo[motorista]?.rides || 0}{' '}
+                      {resumo[motorista]?.rides === 1 ? 'corrida' : 'corridas'}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </ScrollView>
+
+          <Button
+            mode="contained"
+            onPress={handleCopiarRelatorio}
+            icon={copiado ? 'check' : 'content-copy'}
+            contentStyle={estilos.botaoConteudo}
+            style={estilos.botao}
+            labelStyle={estilos.botaoLabel}
+          >
+            {copiado ? 'Copiado!' : 'Copiar para enviar'}
+          </Button>
+        </Modal>
+      </Portal>
     </View>
   );
 }
@@ -549,5 +696,52 @@ const estilos = StyleSheet.create({
   botaoLabel: {
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  relatorioLista: {
+    flexGrow: 0,
+    marginBottom: 16,
+  },
+  relatorioMotoristaBloco: {
+    marginBottom: 18,
+  },
+  relatorioMotoristaNome: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  relatorioVazio: {
+    fontSize: 13,
+    fontStyle: 'italic',
+  },
+  relatorioLinha: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  relatorioLinhaTexto: {
+    fontSize: 13,
+    flex: 1,
+    marginRight: 8,
+  },
+  relatorioLinhaValor: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  relatorioTotalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    marginTop: 6,
+    paddingTop: 8,
+  },
+  relatorioTotalLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  relatorioTotalValor: {
+    fontSize: 13,
+    fontWeight: '700',
   },
 });
