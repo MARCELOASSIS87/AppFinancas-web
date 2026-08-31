@@ -68,6 +68,38 @@ const NOMES_DIA_COMPLETO = {
   0: 'Domingo', 1: 'Segunda', 2: 'Terça', 3: 'Quarta', 4: 'Quinta', 5: 'Sexta', 6: 'Sábado',
 };
 
+const COLUNAS_RELATORIO = ['Data', 'Dia da semana', 'Período do dia', 'Tipo de corrida', 'Valor'];
+
+// Monta as linhas (uma por corrida) na ordem de colunas do relatório.
+function linhasDaCorridas(rides, motorista) {
+  return rides
+    .filter((r) => r.driver === motorista)
+    .sort((a, b) => {
+      const cmp = (a.date || '').localeCompare(b.date || '');
+      if (cmp !== 0) return cmp;
+      return a.period === 'manha' ? -1 : 1;
+    })
+    .map((ride) => {
+      const d = new Date(`${ride.date?.slice(0, 10)}T00:00:00`);
+      const naoFoi = ride.type === 'nao_foi';
+      const valor = parseFloat(ride.amount) || VALORES[ride.period]?.[ride.type] || 0;
+      const tipoLabel = naoFoi
+        ? 'Não foi'
+        : ride.type === 'especial'
+        ? `Especial${ride.route ? ` (${ride.route})` : ''}`
+        : 'Normal';
+
+      return {
+        ride,
+        data: formatDateBR(d),
+        dia: NOMES_DIA_COMPLETO[d.getDay()],
+        periodo: PERIODOS.find((p) => p.valor === ride.period)?.label || ride.period,
+        tipo: tipoLabel,
+        valor: naoFoi ? '—' : formatBRL(valor),
+      };
+    });
+}
+
 function gerarTextoRelatorio(start, end, rides, resumo) {
   const linhas = [];
   linhas.push(`📋 Relatório de corridas — ${formatDateBR(start)} a ${formatDateBR(end)}`);
@@ -76,33 +108,27 @@ function gerarTextoRelatorio(start, end, rides, resumo) {
     linhas.push('');
     linhas.push(motorista.toUpperCase());
 
-    const corridasDoMotorista = rides
-      .filter((r) => r.driver === motorista)
-      .sort((a, b) => {
-        const cmp = (a.date || '').localeCompare(b.date || '');
-        if (cmp !== 0) return cmp;
-        return a.period === 'manha' ? -1 : 1;
-      });
+    const corridas = linhasDaCorridas(rides, motorista);
 
-    if (corridasDoMotorista.length === 0) {
+    if (corridas.length === 0) {
       linhas.push('Nenhum registro na semana.');
       continue;
     }
 
-    for (const ride of corridasDoMotorista) {
-      const d = new Date(`${ride.date?.slice(0, 10)}T00:00:00`);
-      const nomeDia = NOMES_DIA_COMPLETO[d.getDay()];
-      const periodoLabel = PERIODOS.find((p) => p.valor === ride.period)?.label || ride.period;
-      const naoFoi = ride.type === 'nao_foi';
-      const valor = parseFloat(ride.amount) || VALORES[ride.period]?.[ride.type] || 0;
+    // Larguras de coluna calculadas pelo maior conteúdo (cabeçalho ou linha),
+    // pra alinhar como tabela dentro de um bloco monoespaçado (```) no WhatsApp.
+    const campos = ['data', 'dia', 'periodo', 'tipo', 'valor'];
+    const larguras = campos.map((campo, i) =>
+      Math.max(COLUNAS_RELATORIO[i].length, ...corridas.map((l) => l[campo].length))
+    );
 
-      if (naoFoi) {
-        linhas.push(`${nomeDia} ${formatDateBR(d)} - ${periodoLabel} - Não foi`);
-      } else {
-        const tipoLabel = ride.type === 'especial' ? `Especial${ride.route ? ` (${ride.route})` : ''}` : 'Normal';
-        linhas.push(`${nomeDia} ${formatDateBR(d)} - ${periodoLabel} - ${tipoLabel} - ${formatBRL(valor)}`);
-      }
+    linhas.push('```');
+    linhas.push(COLUNAS_RELATORIO.map((c, i) => c.padEnd(larguras[i])).join(' | '));
+    linhas.push(larguras.map((l) => '-'.repeat(l)).join('-|-'));
+    for (const l of corridas) {
+      linhas.push(campos.map((campo, i) => l[campo].padEnd(larguras[i])).join(' | '));
     }
+    linhas.push('```');
 
     const total = resumo[motorista]?.total || 0;
     const qtd = resumo[motorista]?.rides || 0;
@@ -477,13 +503,7 @@ export default function RidesScreen({ navigation }) {
 
           <ScrollView style={estilos.relatorioLista} showsVerticalScrollIndicator={false}>
             {MOTORISTAS.map((motorista) => {
-              const corridas = rides
-                .filter((r) => r.driver === motorista)
-                .sort((a, b) => {
-                  const cmp = (a.date || '').localeCompare(b.date || '');
-                  if (cmp !== 0) return cmp;
-                  return a.period === 'manha' ? -1 : 1;
-                });
+              const corridas = linhasDaCorridas(rides, motorista);
 
               return (
                 <View key={motorista} style={estilos.relatorioMotoristaBloco}>
@@ -496,28 +516,28 @@ export default function RidesScreen({ navigation }) {
                       Nenhum registro na semana.
                     </Text>
                   ) : (
-                    corridas.map((ride) => {
-                      const d = new Date(`${ride.date?.slice(0, 10)}T00:00:00`);
-                      const nomeDia = NOMES_DIA_COMPLETO[d.getDay()];
-                      const periodoLabel = PERIODOS.find((p) => p.valor === ride.period)?.label || ride.period;
-                      const naoFoi = ride.type === 'nao_foi';
-                      const valor = parseFloat(ride.amount) || VALORES[ride.period]?.[ride.type] || 0;
-
-                      return (
-                        <View key={ride.id} style={estilos.relatorioLinha}>
-                          <Text style={[estilos.relatorioLinhaTexto, { color: colors.onSurfaceVariant }]}>
-                            {nomeDia} {formatDateBR(d)} · {periodoLabel}
-                            {!naoFoi && ride.type === 'especial' && ride.route ? ` · ${ride.route}` : ''}
-                            {naoFoi ? ' · Não foi' : ''}
-                          </Text>
-                          {!naoFoi && (
-                            <Text style={[estilos.relatorioLinhaValor, { color: custom.income }]}>
-                              {formatBRL(valor)}
-                            </Text>
-                          )}
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      <View>
+                        <View style={estilos.relatorioTabelaHeader}>
+                          <Text style={[estilos.relatorioColData, estilos.relatorioHeaderTexto, { color: colors.onSurfaceVariant }]}>Data</Text>
+                          <Text style={[estilos.relatorioColDia, estilos.relatorioHeaderTexto, { color: colors.onSurfaceVariant }]}>Dia da semana</Text>
+                          <Text style={[estilos.relatorioColPeriodo, estilos.relatorioHeaderTexto, { color: colors.onSurfaceVariant }]}>Período do dia</Text>
+                          <Text style={[estilos.relatorioColTipo, estilos.relatorioHeaderTexto, { color: colors.onSurfaceVariant }]}>Tipo de corrida</Text>
+                          <Text style={[estilos.relatorioColValor, estilos.relatorioHeaderTexto, { color: colors.onSurfaceVariant }]}>Valor</Text>
                         </View>
-                      );
-                    })
+                        {corridas.map((l) => (
+                          <View key={l.ride.id} style={[estilos.relatorioTabelaRow, { borderTopColor: colors.outline }]}>
+                            <Text style={[estilos.relatorioColData, estilos.relatorioCelulaTexto, { color: colors.onSurface }]}>{l.data}</Text>
+                            <Text style={[estilos.relatorioColDia, estilos.relatorioCelulaTexto, { color: colors.onSurface }]}>{l.dia}</Text>
+                            <Text style={[estilos.relatorioColPeriodo, estilos.relatorioCelulaTexto, { color: colors.onSurface }]}>{l.periodo}</Text>
+                            <Text style={[estilos.relatorioColTipo, estilos.relatorioCelulaTexto, { color: colors.onSurface }]}>{l.tipo}</Text>
+                            <Text style={[estilos.relatorioColValor, estilos.relatorioCelulaTexto, { color: l.ride.type === 'nao_foi' ? colors.onSurfaceVariant : custom.income, fontWeight: '600' }]}>
+                              {l.valor}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    </ScrollView>
                   )}
 
                   <View style={[estilos.relatorioTotalRow, { borderTopColor: colors.outline }]}>
@@ -713,20 +733,40 @@ const estilos = StyleSheet.create({
     fontSize: 13,
     fontStyle: 'italic',
   },
-  relatorioLinha: {
+  relatorioTabelaHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     marginBottom: 6,
   },
-  relatorioLinhaTexto: {
-    fontSize: 13,
-    flex: 1,
-    marginRight: 8,
+  relatorioTabelaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    paddingVertical: 8,
   },
-  relatorioLinhaValor: {
+  relatorioHeaderTexto: {
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  relatorioCelulaTexto: {
     fontSize: 13,
-    fontWeight: '600',
+  },
+  relatorioColData: {
+    width: 56,
+  },
+  relatorioColDia: {
+    width: 84,
+  },
+  relatorioColPeriodo: {
+    width: 84,
+  },
+  relatorioColTipo: {
+    width: 140,
+  },
+  relatorioColValor: {
+    width: 76,
+    textAlign: 'right',
   },
   relatorioTotalRow: {
     flexDirection: 'row',
