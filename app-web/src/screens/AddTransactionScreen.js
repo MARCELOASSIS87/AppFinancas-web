@@ -35,7 +35,7 @@ function ToggleTipo({ tipo, onChange, colors, custom }) {
           <TouchableRipple
             key={opcao.valor}
             onPress={() => onChange(opcao.valor)}
-            rippleColor="rgba(255,255,255,0.08)"
+            rippleColor={custom.ripple}
             style={[
               estilos.toggleTipoBtn,
               {
@@ -380,7 +380,7 @@ export default function AddTransactionScreen({ navigation }) {
                     setCategoria(cat);
                     setModalVisivel(false);
                   }}
-                  rippleColor="rgba(255,255,255,0.08)"
+                  rippleColor={custom.ripple}
                 >
                   <List.Item
                     title={cat.name}

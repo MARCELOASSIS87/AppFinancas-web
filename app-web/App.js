@@ -1,13 +1,17 @@
 import React from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { NavigationContainer, DarkTheme } from '@react-navigation/native';
+import {
+  NavigationContainer,
+  DarkTheme as NavDarkTheme,
+  DefaultTheme as NavDefaultTheme,
+} from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PaperProvider } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFonts } from 'expo-font';
 
-import { theme } from './src/theme/theme';
+import { ThemeProvider, useAppTheme } from './src/context/ThemeContext';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
@@ -19,20 +23,21 @@ import RidesScreen from './src/screens/RidesScreen';
 
 const Stack = createNativeStackNavigator();
 
-const navTheme = {
-  ...DarkTheme,
-  colors: {
-    ...DarkTheme.colors,
-    primary: theme.colors.primary,
-    background: theme.colors.background,
-    card: theme.colors.surface,
-    text: theme.colors.onSurface,
-    border: theme.colors.outline,
-  },
-};
-
 function Navegador() {
   const { token, carregando } = useAuth();
+  const { theme } = useAppTheme();
+
+  const navTheme = {
+    ...(theme.dark ? NavDarkTheme : NavDefaultTheme),
+    colors: {
+      ...(theme.dark ? NavDarkTheme.colors : NavDefaultTheme.colors),
+      primary: theme.colors.primary,
+      background: theme.colors.background,
+      card: theme.colors.surface,
+      text: theme.colors.onSurface,
+      border: theme.colors.outline,
+    },
+  };
 
   if (carregando) {
     return (
@@ -98,7 +103,9 @@ function Navegador() {
   );
 }
 
-export default function App() {
+function AppRaiz() {
+  const { theme } = useAppTheme();
+
   // No navegador as fontes de ícones (setas, chevrons) não são embutidas:
   // precisam ser carregadas antes de renderizar, senão os glifos não aparecem.
   // Se a fonte falhar (ex.: 404), seguimos mesmo assim — melhor o app sem
@@ -121,17 +128,25 @@ export default function App() {
   }
 
   return (
+    <PaperProvider
+      theme={theme}
+      settings={{
+        icon: (props) => <MaterialCommunityIcons {...props} />,
+      }}
+    >
+      <AuthProvider>
+        <Navegador />
+      </AuthProvider>
+    </PaperProvider>
+  );
+}
+
+export default function App() {
+  return (
     <SafeAreaProvider>
-      <PaperProvider
-        theme={theme}
-        settings={{
-          icon: (props) => <MaterialCommunityIcons {...props} />,
-        }}
-      >
-        <AuthProvider>
-          <Navegador />
-        </AuthProvider>
-      </PaperProvider>
+      <ThemeProvider>
+        <AppRaiz />
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }

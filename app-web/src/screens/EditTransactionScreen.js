@@ -302,7 +302,7 @@ export default function EditTransactionScreen({ navigation, route }) {
                     setCategoria(cat);
                     setModalVisivel(false);
                   }}
-                  rippleColor="rgba(255,255,255,0.08)"
+                  rippleColor={custom.ripple}
                 >
                   <List.Item
                     title={cat.name}

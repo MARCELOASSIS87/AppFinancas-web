@@ -262,7 +262,7 @@ export default function RidesScreen({ navigation }) {
         <TouchableRipple
           key={`${motorista}-${periodo}`}
           onPress={() => abrirModal(dia, motorista, periodo, null)}
-          rippleColor="rgba(255,255,255,0.08)"
+          rippleColor={custom.ripple}
           style={[estilos.slot, { backgroundColor: colors.surface }]}
         >
           <View style={estilos.slotRow}>
@@ -281,7 +281,7 @@ export default function RidesScreen({ navigation }) {
       <TouchableRipple
         key={`${motorista}-${periodo}`}
         onPress={() => abrirModal(dia, motorista, periodo, ride)}
-        rippleColor="rgba(255,255,255,0.08)"
+        rippleColor={custom.ripple}
         style={[estilos.slot, { backgroundColor: colors.surface }]}
       >
         <View style={estilos.slotRow}>

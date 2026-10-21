@@ -20,6 +20,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useAppTheme } from '../context/ThemeContext';
 
 registerTranslation('pt', pt);
 
@@ -114,6 +115,7 @@ export default function DashboardScreen({ navigation }) {
 
   const { user, logout } = useAuth();
   const { colors, custom } = useTheme();
+  const { esquemaAtivo, alternarTema } = useAppTheme();
   const insets = useSafeAreaInsets();
 
   useFocusEffect(
@@ -320,7 +322,7 @@ export default function DashboardScreen({ navigation }) {
       <TouchableRipple
         key={item._id || item.id}
         onPress={() => navigation.navigate('EditTransaction', { transacao: item })}
-        rippleColor="rgba(255,255,255,0.08)"
+        rippleColor={custom.ripple}
         style={[estilos.itemWrapper, { backgroundColor: colors.surface }]}
       >
         <View style={estilos.itemRow}>
@@ -368,6 +370,12 @@ export default function DashboardScreen({ navigation }) {
           Olá, {user?.name?.split(' ')[0] || 'usuário'}
         </Text>
         <View style={estilos.headerAcoes}>
+          <IconButton
+            icon={esquemaAtivo === 'dark' ? 'weather-sunny' : 'weather-night'}
+            iconColor={colors.onSurfaceVariant}
+            size={22}
+            onPress={alternarTema}
+          />
           <IconButton
             icon={valoresOcultos ? 'eye-off' : 'eye'}
             iconColor={colors.onSurfaceVariant}
@@ -465,7 +473,7 @@ export default function DashboardScreen({ navigation }) {
               {/* Card — Gastos por categoria */}
               <TouchableRipple
                 onPress={() => navigation.navigate('Categories')}
-                rippleColor="rgba(255,255,255,0.08)"
+                rippleColor={custom.ripple}
                 style={[estilos.cardCategoriasWrapper, { backgroundColor: colors.surface }]}
               >
                 <View style={estilos.cardCategoriasRow}>
@@ -482,7 +490,7 @@ export default function DashboardScreen({ navigation }) {
               {/* Card — Controle de transporte */}
               <TouchableRipple
                 onPress={() => navigation.navigate('Rides')}
-                rippleColor="rgba(255,255,255,0.08)"
+                rippleColor={custom.ripple}
                 style={[estilos.cardCategoriasWrapper, { backgroundColor: colors.surface }]}
               >
                 <View style={estilos.cardCategoriasRow}>
@@ -510,7 +518,7 @@ export default function DashboardScreen({ navigation }) {
                     <View style={estilos.secao}>
                       <TouchableRipple
                         onPress={() => setPendentesAbertas((v) => !v)}
-                        rippleColor="rgba(255,255,255,0.08)"
+                        rippleColor={custom.ripple}
                         style={estilos.secaoTituloTouch}
                       >
                         <View style={estilos.secaoTituloRow}>
@@ -535,7 +543,7 @@ export default function DashboardScreen({ navigation }) {
                     <View style={estilos.secao}>
                       <TouchableRipple
                         onPress={() => setPagasAbertas((v) => !v)}
-                        rippleColor="rgba(255,255,255,0.08)"
+                        rippleColor={custom.ripple}
                         style={estilos.secaoTituloTouch}
                       >
                         <View style={estilos.secaoTituloRow}>
