@@ -14,10 +14,58 @@ import {
   Chip,
 } from 'react-native-paper';
 import { DatePickerInput, registerTranslation, pt } from 'react-native-paper-dates';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import api from '../services/api';
 import { showAlert } from '../utils/alert';
 
 registerTranslation('pt', pt);
+
+const OPCOES_TIPO = [
+  { valor: 'despesa', label: 'Despesa', icon: 'arrow-down-bold-circle-outline' },
+  { valor: 'receita', label: 'Receita', icon: 'arrow-up-bold-circle-outline' },
+];
+
+function ToggleTipo({ tipo, onChange, colors, custom }) {
+  return (
+    <View style={estilos.toggleTipoRow}>
+      {OPCOES_TIPO.map((opcao) => {
+        const selecionado = tipo === opcao.valor;
+        const cor = opcao.valor === 'despesa' ? custom.expense : custom.income;
+        return (
+          <TouchableRipple
+            key={opcao.valor}
+            onPress={() => onChange(opcao.valor)}
+            rippleColor="rgba(255,255,255,0.08)"
+            style={[
+              estilos.toggleTipoBtn,
+              {
+                backgroundColor: selecionado ? `${cor}26` : colors.surfaceVariant,
+                borderColor: selecionado ? cor : colors.outline,
+              },
+            ]}
+          >
+            <View style={estilos.toggleTipoConteudo}>
+              <MaterialCommunityIcons
+                name={opcao.icon}
+                size={18}
+                color={selecionado ? cor : colors.onSurfaceVariant}
+                style={estilos.toggleTipoIcone}
+              />
+              <Text
+                style={[
+                  estilos.toggleTipoLabel,
+                  { color: selecionado ? cor : colors.onSurfaceVariant },
+                ]}
+              >
+                {opcao.label}
+              </Text>
+            </View>
+          </TouchableRipple>
+        );
+      })}
+    </View>
+  );
+}
 
 // 0=domingo ... 6=sábado (mesma convenção do backend)
 const DIAS_SEMANA = [
@@ -145,15 +193,7 @@ export default function AddTransactionScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
       >
         {/* Toggle Despesa / Receita */}
-        <SegmentedButtons
-          value={tipo}
-          onValueChange={handleChangeTipo}
-          buttons={[
-            { value: 'despesa', label: 'Despesa' },
-            { value: 'receita', label: 'Receita' },
-          ]}
-          style={estilos.segmentado}
-        />
+        <ToggleTipo tipo={tipo} onChange={handleChangeTipo} colors={colors} custom={custom} />
 
         {/* Valor */}
         <TextInput
@@ -378,6 +418,30 @@ const estilos = StyleSheet.create({
   },
   segmentado: {
     marginBottom: 20,
+  },
+  toggleTipoRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+  },
+  toggleTipoBtn: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    overflow: 'hidden',
+  },
+  toggleTipoConteudo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+  },
+  toggleTipoIcone: {
+    marginRight: 8,
+  },
+  toggleTipoLabel: {
+    fontSize: 15,
+    fontWeight: '700',
   },
   campoValor: {
     marginBottom: 16,
