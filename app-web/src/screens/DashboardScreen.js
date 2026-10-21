@@ -264,7 +264,7 @@ export default function DashboardScreen({ navigation }) {
   // ──────────────────────────────────────────────────────────────────────────
 
   const todasPagas = transacoes.filter(
-    (t) => t.status === 'pago' && new Date(t.date) <= agora
+    (t) => t.status === 'pago'
   );
   const saldoAtual = todasPagas.reduce((acc, t) => {
     const v = parseFloat(t.amount) || 0;
