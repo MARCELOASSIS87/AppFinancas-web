@@ -271,16 +271,8 @@ export default function DashboardScreen({ navigation }) {
     return acc + (t.category?.type === 'receita' ? v : -v);
   }, 0);
 
-  const aReceber = pendentes
-    .filter((t) => t.category?.type === 'receita')
-    .reduce((acc, t) => acc + (parseFloat(t.amount) || 0), 0);
-
   const aPagar = pendentes
     .filter((t) => t.category?.type === 'despesa')
-    .reduce((acc, t) => acc + (parseFloat(t.amount) || 0), 0);
-
-  const receitasDoMes = pagasDoMes
-    .filter((t) => t.category?.type === 'receita')
     .reduce((acc, t) => acc + (parseFloat(t.amount) || 0), 0);
 
   const despesasDoMes = pagasDoMes
@@ -289,10 +281,6 @@ export default function DashboardScreen({ navigation }) {
 
   // Previsão do mês (futuro): tudo que está lançado naquele mês, pago ou
   // pendente — na prática as recorrências geradas pra frente.
-  const previsaoReceitas = transacoesDoMes
-    .filter((t) => t.category?.type === 'receita')
-    .reduce((acc, t) => acc + (parseFloat(t.amount) || 0), 0);
-
   const previsaoGastos = transacoesDoMes
     .filter((t) => t.category?.type === 'despesa')
     .reduce((acc, t) => acc + (parseFloat(t.amount) || 0), 0);
@@ -547,14 +535,6 @@ export default function DashboardScreen({ navigation }) {
               </View>
 
               <View style={estilos.miniCardsRow}>
-                <Surface style={[estilos.miniCard, { backgroundColor: colors.surface }]} elevation={0}>
-                  <Text style={[estilos.miniCardLabel, { color: colors.onSurfaceVariant }]}>
-                    {ehMesAtual ? 'A receber' : ehFuturo ? 'Previsão receitas' : 'Receitas'}
-                  </Text>
-                  <Text style={[estilos.miniCardValor, { color: custom.income }]}>
-                    {formatBRL(ehMesAtual ? aReceber : ehFuturo ? previsaoReceitas : receitasDoMes)}
-                  </Text>
-                </Surface>
                 <Surface style={[estilos.miniCard, { backgroundColor: colors.surface }]} elevation={0}>
                   <Text style={[estilos.miniCardLabel, { color: colors.onSurfaceVariant }]}>
                     {ehMesAtual ? 'A pagar' : ehFuturo ? 'Previsão gastos' : 'Despesas'}
