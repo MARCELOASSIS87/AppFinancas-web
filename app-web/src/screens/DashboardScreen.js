@@ -96,6 +96,8 @@ export default function DashboardScreen({ navigation }) {
   const [carregando, setCarregando] = useState(true);
   const [mesAtual, setMesAtual] = useState(new Date());
   const [valoresOcultos, setValoresOcultos] = useState(false);
+  const [pendentesAbertas, setPendentesAbertas] = useState(false);
+  const [pagasAbertas, setPagasAbertas] = useState(false);
 
   // ─── ESTADO DOS FILTROS / BUSCA ───────────────────────────────────────────
   const [busca, setBusca] = useState('');
@@ -506,18 +508,52 @@ export default function DashboardScreen({ navigation }) {
                 <>
                   {pendentesSorted.length > 0 && (
                     <View style={estilos.secao}>
-                      <Text style={[estilos.secaoTitulo, { color: colors.onSurfaceVariant }]}>
-                        Pendentes
-                      </Text>
-                      {pendentesSorted.map((item) => renderTransacao(item))}
+                      <TouchableRipple
+                        onPress={() => setPendentesAbertas((v) => !v)}
+                        rippleColor="rgba(255,255,255,0.08)"
+                        style={estilos.secaoTituloTouch}
+                      >
+                        <View style={estilos.secaoTituloRow}>
+                          <Text style={[estilos.secaoTitulo, { color: colors.onSurfaceVariant }]}>
+                            Pendentes ({pendentesSorted.length})
+                          </Text>
+                          <MaterialCommunityIcons
+                            name={pendentesAbertas ? 'chevron-up' : 'chevron-down'}
+                            size={18}
+                            color={colors.onSurfaceVariant}
+                          />
+                        </View>
+                      </TouchableRipple>
+                      {pendentesAbertas && (
+                        <View style={estilos.secaoLista}>
+                          {pendentesSorted.map((item) => renderTransacao(item))}
+                        </View>
+                      )}
                     </View>
                   )}
                   {pagasSorted.length > 0 && (
                     <View style={estilos.secao}>
-                      <Text style={[estilos.secaoTitulo, { color: colors.onSurfaceVariant }]}>
-                        Pagas
-                      </Text>
-                      {pagasSorted.map((item) => renderTransacao(item))}
+                      <TouchableRipple
+                        onPress={() => setPagasAbertas((v) => !v)}
+                        rippleColor="rgba(255,255,255,0.08)"
+                        style={estilos.secaoTituloTouch}
+                      >
+                        <View style={estilos.secaoTituloRow}>
+                          <Text style={[estilos.secaoTitulo, { color: colors.onSurfaceVariant }]}>
+                            Pagas ({pagasSorted.length})
+                          </Text>
+                          <MaterialCommunityIcons
+                            name={pagasAbertas ? 'chevron-up' : 'chevron-down'}
+                            size={18}
+                            color={colors.onSurfaceVariant}
+                          />
+                        </View>
+                      </TouchableRipple>
+                      {pagasAbertas && (
+                        <View style={estilos.secaoLista}>
+                          {pagasSorted.map((item) => renderTransacao(item))}
+                        </View>
+                      )}
                     </View>
                   )}
                 </>
@@ -835,13 +871,25 @@ const estilos = StyleSheet.create({
   secao: {
     marginBottom: 16,
   },
+  secaoTituloTouch: {
+    marginHorizontal: 16,
+    borderRadius: 8,
+  },
+  secaoTituloRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+  },
   secaoTitulo: {
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1.2,
-    marginHorizontal: 16,
-    marginBottom: 8,
+  },
+  secaoLista: {
+    marginTop: 6,
   },
   itemWrapper: {
     marginHorizontal: 16,
