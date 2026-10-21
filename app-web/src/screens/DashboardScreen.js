@@ -12,6 +12,8 @@ import {
   TextInput,
   Chip,
   Button,
+  Portal,
+  Modal,
 } from 'react-native-paper';
 import { DatePickerInput, registerTranslation, pt } from 'react-native-paper-dates';
 import { useFocusEffect } from '@react-navigation/native';
@@ -23,6 +25,12 @@ registerTranslation('pt', pt);
 
 function formatBRL(valor) {
   return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+const VALOR_OCULTO = 'R$ ••••••';
+
+function formatBRLSeVisivel(valor, oculto) {
+  return oculto ? VALOR_OCULTO : formatBRL(valor);
 }
 
 // DD/MM — usado no modo mês (ano é implícito).
@@ -87,6 +95,7 @@ export default function DashboardScreen({ navigation }) {
   const [transacoes, setTransacoes] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [mesAtual, setMesAtual] = useState(new Date());
+  const [valoresOcultos, setValoresOcultos] = useState(false);
 
   // ─── ESTADO DOS FILTROS / BUSCA ───────────────────────────────────────────
   const [busca, setBusca] = useState('');
@@ -98,6 +107,7 @@ export default function DashboardScreen({ navigation }) {
   const [valorMax, setValorMax] = useState('');
   const [periodoDe, setPeriodoDe] = useState(null);
   const [periodoAte, setPeriodoAte] = useState(null);
+  const [buscaModalVisivel, setBuscaModalVisivel] = useState(false);
   // ──────────────────────────────────────────────────────────────────────────
 
   const { user, logout } = useAuth();
@@ -342,7 +352,7 @@ export default function DashboardScreen({ navigation }) {
             </View>
           </View>
           <Text style={[estilos.itemValor, { color: valorCor }]}>
-            {sinal}{formatBRL(parseFloat(item.amount) || 0)}
+            {valoresOcultos ? VALOR_OCULTO : `${sinal}${formatBRL(parseFloat(item.amount) || 0)}`}
           </Text>
         </View>
       </TouchableRipple>
@@ -355,12 +365,26 @@ export default function DashboardScreen({ navigation }) {
         <Text style={[estilos.headerSaudacao, { color: colors.onSurface }]}>
           Olá, {user?.name?.split(' ')[0] || 'usuário'}
         </Text>
-        <IconButton
-          icon="logout"
-          iconColor={colors.onSurfaceVariant}
-          size={22}
-          onPress={logout}
-        />
+        <View style={estilos.headerAcoes}>
+          <IconButton
+            icon={valoresOcultos ? 'eye-off' : 'eye'}
+            iconColor={colors.onSurfaceVariant}
+            size={22}
+            onPress={() => setValoresOcultos((v) => !v)}
+          />
+          <IconButton
+            icon="magnify"
+            iconColor={filtrosAtivos ? colors.primary : colors.onSurfaceVariant}
+            size={22}
+            onPress={() => setBuscaModalVisivel(true)}
+          />
+          <IconButton
+            icon="logout"
+            iconColor={colors.onSurfaceVariant}
+            size={22}
+            onPress={logout}
+          />
+        </View>
       </View>
 
       {carregando ? (
@@ -373,8 +397,170 @@ export default function DashboardScreen({ navigation }) {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* ─── BUSCA + FILTROS ─── */}
-          <View style={estilos.filtroBloco}>
+          {/* ─── SALDO (sempre) ─── */}
+          <Surface style={[estilos.cardPrincipal, { backgroundColor: colors.surface }]} elevation={0}>
+            <Text style={[estilos.cardLabel, { color: colors.onSurfaceVariant }]}>
+              Saldo atual
+            </Text>
+            <Text style={[estilos.cardValor, { color: saldoCor }]}>
+              {formatBRLSeVisivel(saldoAtual, valoresOcultos)}
+            </Text>
+          </Surface>
+
+          {filtrosAtivos ? (
+            /* ═══ MODO BUSCA: resultados de todo o histórico ═══ */
+            <>
+              <Surface style={[estilos.resumo, { backgroundColor: colors.surface }]} elevation={0}>
+                <Text style={[estilos.resumoContagem, { color: colors.onSurface }]}>
+                  {resultados.length} {resultados.length === 1 ? 'resultado' : 'resultados'}
+                </Text>
+                <View style={estilos.resumoValores}>
+                  <Text style={[estilos.resumoValor, { color: custom.income }]}>
+                    {valoresOcultos ? VALOR_OCULTO : `+ ${formatBRL(totalReceitasResult)}`}
+                  </Text>
+                  <Text style={[estilos.resumoValor, { color: custom.expense }]}>
+                    {valoresOcultos ? VALOR_OCULTO : `- ${formatBRL(totalDespesasResult)}`}
+                  </Text>
+                </View>
+              </Surface>
+
+              {resultados.length === 0 ? (
+                <Text style={[estilos.mesVazio, { color: custom.textSecondary }]}>
+                  Nenhuma transação encontrada com esses filtros.
+                </Text>
+              ) : (
+                <View style={estilos.secao}>
+                  {resultadosSorted.map((item) => renderTransacao(item, true))}
+                </View>
+              )}
+            </>
+          ) : (
+            /* ═══ MODO NORMAL: dashboard mês a mês ═══ */
+            <>
+              {/* Header de mês */}
+              <View style={estilos.mesHeader}>
+                <IconButton icon="chevron-left" iconColor={colors.onSurface} size={26} onPress={mesAnterior} />
+                <Text style={[estilos.mesTexto, { color: colors.onSurface }]}>{labelMes}</Text>
+                <IconButton
+                  icon="chevron-right"
+                  iconColor={colors.onSurface}
+                  size={26}
+                  onPress={proximoMes}
+                />
+              </View>
+
+              <View style={estilos.miniCardsRow}>
+                <Surface style={[estilos.miniCard, { backgroundColor: colors.surface }]} elevation={0}>
+                  <Text style={[estilos.miniCardLabel, { color: colors.onSurfaceVariant }]}>
+                    {ehMesAtual ? 'A pagar' : ehFuturo ? 'Previsão gastos' : 'Despesas'}
+                  </Text>
+                  <Text style={[estilos.miniCardValor, { color: custom.expense }]}>
+                    {formatBRLSeVisivel(ehMesAtual ? aPagar : ehFuturo ? previsaoGastos : despesasDoMes, valoresOcultos)}
+                  </Text>
+                </Surface>
+              </View>
+
+              {/* Card — Gastos por categoria */}
+              <TouchableRipple
+                onPress={() => navigation.navigate('Categories')}
+                rippleColor="rgba(255,255,255,0.08)"
+                style={[estilos.cardCategoriasWrapper, { backgroundColor: colors.surface }]}
+              >
+                <View style={estilos.cardCategoriasRow}>
+                  <View style={estilos.cardCategoriasEsquerda}>
+                    <MaterialCommunityIcons name="chart-donut" size={22} color={colors.primary} style={{ marginRight: 10 }} />
+                    <Text style={[estilos.cardCategoriasTexto, { color: colors.onSurface }]}>
+                      Gastos por categoria
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons name="chevron-right" size={22} color={colors.onSurfaceVariant} />
+                </View>
+              </TouchableRipple>
+
+              {/* Card — Controle de transporte */}
+              <TouchableRipple
+                onPress={() => navigation.navigate('Rides')}
+                rippleColor="rgba(255,255,255,0.08)"
+                style={[estilos.cardCategoriasWrapper, { backgroundColor: colors.surface }]}
+              >
+                <View style={estilos.cardCategoriasRow}>
+                  <View style={estilos.cardCategoriasEsquerda}>
+                    <MaterialCommunityIcons name="bus-school" size={22} color={colors.primary} style={{ marginRight: 10 }} />
+                    <Text style={[estilos.cardCategoriasTexto, { color: colors.onSurface }]}>
+                      Controle de transporte
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons name="chevron-right" size={22} color={colors.onSurfaceVariant} />
+                </View>
+              </TouchableRipple>
+
+              {transacoes.length === 0 ? (
+                <Text style={[estilos.vazioTexto, { color: colors.onSurfaceVariant }]}>
+                  Nenhuma transação ainda.{'\n'}Toque no + para começar.
+                </Text>
+              ) : transacoesDoMes.length === 0 ? (
+                <Text style={[estilos.mesVazio, { color: custom.textSecondary }]}>
+                  Sem transações em {labelMes}
+                </Text>
+              ) : (
+                <>
+                  {pendentesSorted.length > 0 && (
+                    <View style={estilos.secao}>
+                      <Text style={[estilos.secaoTitulo, { color: colors.onSurfaceVariant }]}>
+                        Pendentes
+                      </Text>
+                      {pendentesSorted.map((item) => renderTransacao(item))}
+                    </View>
+                  )}
+                  {pagasSorted.length > 0 && (
+                    <View style={estilos.secao}>
+                      <Text style={[estilos.secaoTitulo, { color: colors.onSurfaceVariant }]}>
+                        Pagas
+                      </Text>
+                      {pagasSorted.map((item) => renderTransacao(item))}
+                    </View>
+                  )}
+                </>
+              )}
+            </>
+          )}
+
+          <View style={{ height: 80 }} />
+        </ScrollView>
+      )}
+
+      <FAB
+        icon="plus"
+        style={[estilos.fab, { backgroundColor: colors.primary, bottom: insets.bottom + 16 }]}
+        color="#fff"
+        onPress={() => navigation.navigate('AddTransaction')}
+      />
+
+      {/* Modal de busca + filtros */}
+      <Portal>
+        <Modal
+          visible={buscaModalVisivel}
+          onDismiss={() => setBuscaModalVisivel(false)}
+          contentContainerStyle={[estilos.modalBusca, { backgroundColor: colors.surface }]}
+        >
+          <View style={estilos.modalBuscaHeader}>
+            <Text style={[estilos.modalBuscaTitulo, { color: colors.onSurface }]}>
+              Buscar e filtrar
+            </Text>
+            <IconButton
+              icon="close"
+              iconColor={colors.onSurfaceVariant}
+              size={20}
+              onPress={() => setBuscaModalVisivel(false)}
+            />
+          </View>
+
+          <ScrollView
+            contentContainerStyle={estilos.filtroBloco}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+
             <TextInput
               mode="outlined"
               dense
@@ -480,146 +666,9 @@ export default function DashboardScreen({ navigation }) {
                 Limpar filtros
               </Button>
             )}
-          </View>
-
-          {/* ─── SALDO (sempre) ─── */}
-          <Surface style={[estilos.cardPrincipal, { backgroundColor: colors.surface }]} elevation={0}>
-            <Text style={[estilos.cardLabel, { color: colors.onSurfaceVariant }]}>
-              Saldo atual
-            </Text>
-            <Text style={[estilos.cardValor, { color: saldoCor }]}>
-              {formatBRL(saldoAtual)}
-            </Text>
-          </Surface>
-
-          {filtrosAtivos ? (
-            /* ═══ MODO BUSCA: resultados de todo o histórico ═══ */
-            <>
-              <Surface style={[estilos.resumo, { backgroundColor: colors.surface }]} elevation={0}>
-                <Text style={[estilos.resumoContagem, { color: colors.onSurface }]}>
-                  {resultados.length} {resultados.length === 1 ? 'resultado' : 'resultados'}
-                </Text>
-                <View style={estilos.resumoValores}>
-                  <Text style={[estilos.resumoValor, { color: custom.income }]}>
-                    + {formatBRL(totalReceitasResult)}
-                  </Text>
-                  <Text style={[estilos.resumoValor, { color: custom.expense }]}>
-                    - {formatBRL(totalDespesasResult)}
-                  </Text>
-                </View>
-              </Surface>
-
-              {resultados.length === 0 ? (
-                <Text style={[estilos.mesVazio, { color: custom.textSecondary }]}>
-                  Nenhuma transação encontrada com esses filtros.
-                </Text>
-              ) : (
-                <View style={estilos.secao}>
-                  {resultadosSorted.map((item) => renderTransacao(item, true))}
-                </View>
-              )}
-            </>
-          ) : (
-            /* ═══ MODO NORMAL: dashboard mês a mês ═══ */
-            <>
-              {/* Header de mês */}
-              <View style={estilos.mesHeader}>
-                <IconButton icon="chevron-left" iconColor={colors.onSurface} size={26} onPress={mesAnterior} />
-                <Text style={[estilos.mesTexto, { color: colors.onSurface }]}>{labelMes}</Text>
-                <IconButton
-                  icon="chevron-right"
-                  iconColor={colors.onSurface}
-                  size={26}
-                  onPress={proximoMes}
-                />
-              </View>
-
-              <View style={estilos.miniCardsRow}>
-                <Surface style={[estilos.miniCard, { backgroundColor: colors.surface }]} elevation={0}>
-                  <Text style={[estilos.miniCardLabel, { color: colors.onSurfaceVariant }]}>
-                    {ehMesAtual ? 'A pagar' : ehFuturo ? 'Previsão gastos' : 'Despesas'}
-                  </Text>
-                  <Text style={[estilos.miniCardValor, { color: custom.expense }]}>
-                    {formatBRL(ehMesAtual ? aPagar : ehFuturo ? previsaoGastos : despesasDoMes)}
-                  </Text>
-                </Surface>
-              </View>
-
-              {/* Card — Gastos por categoria */}
-              <TouchableRipple
-                onPress={() => navigation.navigate('Categories')}
-                rippleColor="rgba(255,255,255,0.08)"
-                style={[estilos.cardCategoriasWrapper, { backgroundColor: colors.surface }]}
-              >
-                <View style={estilos.cardCategoriasRow}>
-                  <View style={estilos.cardCategoriasEsquerda}>
-                    <MaterialCommunityIcons name="chart-donut" size={22} color={colors.primary} style={{ marginRight: 10 }} />
-                    <Text style={[estilos.cardCategoriasTexto, { color: colors.onSurface }]}>
-                      Gastos por categoria
-                    </Text>
-                  </View>
-                  <MaterialCommunityIcons name="chevron-right" size={22} color={colors.onSurfaceVariant} />
-                </View>
-              </TouchableRipple>
-
-              {/* Card — Controle de transporte */}
-              <TouchableRipple
-                onPress={() => navigation.navigate('Rides')}
-                rippleColor="rgba(255,255,255,0.08)"
-                style={[estilos.cardCategoriasWrapper, { backgroundColor: colors.surface }]}
-              >
-                <View style={estilos.cardCategoriasRow}>
-                  <View style={estilos.cardCategoriasEsquerda}>
-                    <MaterialCommunityIcons name="bus-school" size={22} color={colors.primary} style={{ marginRight: 10 }} />
-                    <Text style={[estilos.cardCategoriasTexto, { color: colors.onSurface }]}>
-                      Controle de transporte
-                    </Text>
-                  </View>
-                  <MaterialCommunityIcons name="chevron-right" size={22} color={colors.onSurfaceVariant} />
-                </View>
-              </TouchableRipple>
-
-              {transacoes.length === 0 ? (
-                <Text style={[estilos.vazioTexto, { color: colors.onSurfaceVariant }]}>
-                  Nenhuma transação ainda.{'\n'}Toque no + para começar.
-                </Text>
-              ) : transacoesDoMes.length === 0 ? (
-                <Text style={[estilos.mesVazio, { color: custom.textSecondary }]}>
-                  Sem transações em {labelMes}
-                </Text>
-              ) : (
-                <>
-                  {pendentesSorted.length > 0 && (
-                    <View style={estilos.secao}>
-                      <Text style={[estilos.secaoTitulo, { color: colors.onSurfaceVariant }]}>
-                        Pendentes
-                      </Text>
-                      {pendentesSorted.map((item) => renderTransacao(item))}
-                    </View>
-                  )}
-                  {pagasSorted.length > 0 && (
-                    <View style={estilos.secao}>
-                      <Text style={[estilos.secaoTitulo, { color: colors.onSurfaceVariant }]}>
-                        Pagas
-                      </Text>
-                      {pagasSorted.map((item) => renderTransacao(item))}
-                    </View>
-                  )}
-                </>
-              )}
-            </>
-          )}
-
-          <View style={{ height: 80 }} />
-        </ScrollView>
-      )}
-
-      <FAB
-        icon="plus"
-        style={[estilos.fab, { backgroundColor: colors.primary, bottom: insets.bottom + 16 }]}
-        color="#fff"
-        onPress={() => navigation.navigate('AddTransaction')}
-      />
+          </ScrollView>
+        </Modal>
+      </Portal>
     </View>
   );
 }
@@ -640,10 +689,30 @@ const estilos = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
   },
-  // ─── Filtros ───
+  headerAcoes: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  // ─── Modal de busca/filtros ───
+  modalBusca: {
+    marginHorizontal: 16,
+    marginVertical: 40,
+    borderRadius: 16,
+    padding: 16,
+    maxHeight: '85%',
+  },
+  modalBuscaHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  modalBuscaTitulo: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
   filtroBloco: {
-    paddingHorizontal: 16,
-    marginBottom: 8,
+    paddingBottom: 4,
   },
   buscaCampo: {
     marginBottom: 10,
